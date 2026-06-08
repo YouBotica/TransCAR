@@ -223,4 +223,4 @@ total_epochs = 24   #24
 evaluation = dict(interval=2, pipeline=test_pipeline)  #2
 
 runner = dict(type='EpochBasedRunner', max_epochs=total_epochs)
-load_from='path/to/detr3d_resnet101.pth'
+load_from='/scratch/gilbreth/hoyos/transcar_workspace/TransCAR/detr3d_resnet101.pth'
