@@ -22,9 +22,10 @@ import numpy as np
 import pickle
 
 # train/eval with nuScenes mini dataset
-# nusc = NuScenes(version='v1.0-mini', dataroot='/home/xxx/nuscene_data/NUSCENES_DATASET_ROOT', verbose=True)
+# nusc = NuScenes(version='v1.0-mini', dataroot='/scratch/gilbreth/hoyos/transcar_workspace/nuscene_data', verbose=True)
+nusc = NuScenes(version='v1.0-trainval', dataroot='/scratch/gilbreth/hoyos/transcar_workspace/nuscene_data', verbose=True)
 # train/eval with nuScenes trainval dataset
-nusc = NuScenes(version='v1.0-trainval', dataroot='/home/xxx/nuscene_data/NUSCENES_DATASET_ROOT', verbose=True)
+# nusc = NuScenes(version='v1.0-trainval', dataroot='/home/xxx/nuscene_data/NUSCENES_DATASET_ROOT', verbose=True)
 # prepare submission using nuScenes test set
 #nusc = NuScenes(version='v1.0-test', dataroot='/home/xxx/nuscene_data/NUSCENES_DATASET_ROOT', verbose=True)
 
@@ -194,6 +195,7 @@ class Detr3DHead(DETRHead):
         self.output_proj2 = nn.Linear(self.embed_dims, self.embed_dims)
         self.output_proj3 = nn.Linear(self.embed_dims, self.embed_dims)
         self.nusc = nusc
+        self.artificial_latency = 0.0
 
     def _init_layers(self):
         """Initialize classification branch and regression branch of head."""
@@ -307,6 +309,35 @@ class Detr3DHead(DETRHead):
         radar_pointcloud_front_right, timestamps_list_fr = RadarPointCloud.from_file_multisweep(self.nusc, sample_instance, chan="RADAR_FRONT_RIGHT", ref_chan="LIDAR_TOP", nsweeps=5)
         radar_pointcloud_back_left, timestamps_list_bl = RadarPointCloud.from_file_multisweep(self.nusc, sample_instance, chan="RADAR_BACK_LEFT", ref_chan="LIDAR_TOP", nsweeps=5)
         radar_pointcloud_back_right, timestamps_list_br = RadarPointCloud.from_file_multisweep(self.nusc, sample_instance, chan="RADAR_BACK_RIGHT", ref_chan="LIDAR_TOP", nsweeps=5)
+
+        
+        # --- LATENCY SABOTAGE MASK ---
+        if self.artificial_latency > 0.0:
+            radar_clouds = [
+                radar_pointcloud_front, radar_pointcloud_front_left, 
+                radar_pointcloud_front_right, radar_pointcloud_back_left, 
+                radar_pointcloud_back_right
+            ]
+            timestamp_lists = [
+                timestamps_list_f, timestamps_list_fl, 
+                timestamps_list_fr, timestamps_list_bl, 
+                timestamps_list_br
+            ]
+            
+            for pc, t_list in zip(radar_clouds, timestamp_lists):
+                if t_list.shape[1] != 0:
+                    # Keep points only if their age exceeds the artificial latency hurdle
+                    valid_mask = t_list[0] >= self.artificial_latency
+                    pc.points = pc.points[:, valid_mask]
+            
+            # Re-extract the filtered timestamp vectors so the rest of the code is aligned
+            timestamps_list_f = timestamps_list_f[:, timestamps_list_f[0] >= self.artificial_latency]
+            timestamps_list_fl = timestamps_list_fl[:, timestamps_list_fl[0] >= self.artificial_latency]
+            timestamps_list_fr = timestamps_list_fr[:, timestamps_list_fr[0] >= self.artificial_latency]
+            timestamps_list_bl = timestamps_list_bl[:, timestamps_list_bl[0] >= self.artificial_latency]
+            timestamps_list_br = timestamps_list_br[:, timestamps_list_br[0] >= self.artificial_latency]
+        # ------------------------------
+
 
         ref_sd_record = self.nusc.get('sample_data', sample_instance['data']['LIDAR_TOP'])
         for radar_name in ['RADAR_FRONT','RADAR_FRONT_LEFT','RADAR_FRONT_RIGHT','RADAR_BACK_LEFT','RADAR_BACK_RIGHT']:
