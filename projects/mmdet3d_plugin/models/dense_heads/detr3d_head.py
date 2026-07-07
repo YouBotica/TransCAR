@@ -195,7 +195,7 @@ class Detr3DHead(DETRHead):
         self.output_proj2 = nn.Linear(self.embed_dims, self.embed_dims)
         self.output_proj3 = nn.Linear(self.embed_dims, self.embed_dims)
         self.nusc = nusc
-        self.artificial_latency = 0.0
+        self.artificial_latency = 0.16
 
     def _init_layers(self):
         """Initialize classification branch and regression branch of head."""
@@ -302,16 +302,19 @@ class Detr3DHead(DETRHead):
 
         sample_idx = img_metas[0]['sample_idx']
         sample_instance = self.nusc.get('sample', sample_idx)
+
+        sweeps_to_skip = int(self.artificial_latency / 0.05)
+        total_sweeps_to_fetch = 5 + sweeps_to_skip
+
         #RadarPointCloud.disable_filters()  # test using raw radar features
         point_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
-        radar_pointcloud_front, timestamps_list_f = RadarPointCloud.from_file_multisweep(self.nusc, sample_instance, chan="RADAR_FRONT", ref_chan="LIDAR_TOP", nsweeps=5)
-        radar_pointcloud_front_left, timestamps_list_fl = RadarPointCloud.from_file_multisweep(self.nusc, sample_instance, chan="RADAR_FRONT_LEFT", ref_chan="LIDAR_TOP", nsweeps=5)
-        radar_pointcloud_front_right, timestamps_list_fr = RadarPointCloud.from_file_multisweep(self.nusc, sample_instance, chan="RADAR_FRONT_RIGHT", ref_chan="LIDAR_TOP", nsweeps=5)
-        radar_pointcloud_back_left, timestamps_list_bl = RadarPointCloud.from_file_multisweep(self.nusc, sample_instance, chan="RADAR_BACK_LEFT", ref_chan="LIDAR_TOP", nsweeps=5)
-        radar_pointcloud_back_right, timestamps_list_br = RadarPointCloud.from_file_multisweep(self.nusc, sample_instance, chan="RADAR_BACK_RIGHT", ref_chan="LIDAR_TOP", nsweeps=5)
+        radar_pointcloud_front, timestamps_list_f = RadarPointCloud.from_file_multisweep(self.nusc, sample_instance, chan="RADAR_FRONT", ref_chan="LIDAR_TOP", nsweeps=total_sweeps_to_fetch)
+        radar_pointcloud_front_left, timestamps_list_fl = RadarPointCloud.from_file_multisweep(self.nusc, sample_instance, chan="RADAR_FRONT_LEFT", ref_chan="LIDAR_TOP", nsweeps=total_sweeps_to_fetch)
+        radar_pointcloud_front_right, timestamps_list_fr = RadarPointCloud.from_file_multisweep(self.nusc, sample_instance, chan="RADAR_FRONT_RIGHT", ref_chan="LIDAR_TOP", nsweeps=total_sweeps_to_fetch)
+        radar_pointcloud_back_left, timestamps_list_bl = RadarPointCloud.from_file_multisweep(self.nusc, sample_instance, chan="RADAR_BACK_LEFT", ref_chan="LIDAR_TOP", nsweeps=total_sweeps_to_fetch)
+        radar_pointcloud_back_right, timestamps_list_br = RadarPointCloud.from_file_multisweep(self.nusc, sample_instance, chan="RADAR_BACK_RIGHT", ref_chan="LIDAR_TOP", nsweeps=total_sweeps_to_fetch)
 
-        
-        # --- LATENCY SABOTAGE MASK ---
+        # --- EXECUTE THE LATENCY MASK ---
         if self.artificial_latency > 0.0:
             radar_clouds = [
                 radar_pointcloud_front, radar_pointcloud_front_left, 
@@ -336,7 +339,6 @@ class Detr3DHead(DETRHead):
             timestamps_list_fr = timestamps_list_fr[:, timestamps_list_fr[0] >= self.artificial_latency]
             timestamps_list_bl = timestamps_list_bl[:, timestamps_list_bl[0] >= self.artificial_latency]
             timestamps_list_br = timestamps_list_br[:, timestamps_list_br[0] >= self.artificial_latency]
-        # ------------------------------
 
 
         ref_sd_record = self.nusc.get('sample_data', sample_instance['data']['LIDAR_TOP'])
